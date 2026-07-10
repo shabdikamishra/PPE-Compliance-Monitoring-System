@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>PPE Monitor — WebSocket Test</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #111; color: #eee; padding: 20px; }
+    img  { width: 640px; border: 2px solid #333; border-radius: 8px; }
+    .banner { padding: 10px 16px; border-radius: 6px; margin: 10px 0; font-size: 15px; font-weight: bold; }
+    .violation { background: #7f0000; }
+    .compliant  { background: #1a5c1a; }
+    .stat { display: inline-block; background: #222; padding: 8px 16px;
+            border-radius: 6px; margin: 4px; font-size: 13px; }
+    #log { background: #1a1a1a; padding: 10px; border-radius: 6px;
+           height: 160px; overflow-y: auto; font-size: 12px; color: #aaa; }
+  </style>
+</head>
+<body>
+  <h2>PPE Compliance Monitor — WebSocket Test</h2>
+
+  <div id="status" class="banner compliant">Connecting...</div>
+  <img id="feed" src="" alt="Live feed will appear here"/>
+
+  <div style="margin: 10px 0;">
+    <span class="stat">Frames: <b id="frames">0</b></span>
+    <span class="stat">Violations (session): <b id="violations">0</b></span>
+    <span class="stat">DB Total: <b id="db_total">0</b></span>
+    <span class="stat">DB Today: <b id="db_today">0</b></span>
+    <span class="stat">Missing: <b id="missing">—</b></span>
+  </div>
+
+  <div id="log"></div>
+
+  <script>
+    const ws         = new WebSocket("ws://localhost:8000/ws/stream/CAM_01");
+    const feed       = document.getElementById("feed");
+    const statusDiv  = document.getElementById("status");
+    const framesEl   = document.getElementById("frames");
+    const violEl     = document.getElementById("violations");
+    const totalEl    = document.getElementById("db_total");
+    const todayEl    = document.getElementById("db_today");
+    const missingEl  = document.getElementById("missing");
+    const logEl      = document.getElementById("log");
+
+    let frameCount     = 0;
+    let violationCount = 0;
+
+    ws.onopen = () => {
+      statusDiv.textContent   = "✓ Connected to CAM_01";
+      statusDiv.className     = "banner compliant";
+      log("WebSocket connected.");
+    };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+
+      // Update video frame
+      feed.src = "data:image/jpeg;base64," + data.frame;
+      frameCount++;
+      framesEl.textContent = frameCount;
+
+      // Update status banner
+      if (data.is_violation) {
+        statusDiv.textContent = "⚠ VIOLATION — Missing: " + data.missing_ppe.join(", ");
+        statusDiv.className   = "banner violation";
+        violationCount++;
+        violEl.textContent    = violationCount;
+        missingEl.textContent = data.missing_ppe.join(", ");
+      } else {
+        statusDiv.textContent = "✓ All PPE Compliant";
+        statusDiv.className   = "banner compliant";
+        missingEl.textContent = "—";
+      }
+
+      // DB stats
+      if (data.stats) {
+        totalEl.textContent = data.stats.total;
+        todayEl.textContent = data.stats.today;
+      }
+
+      // Log confirmed violations
+      if (data.violation_fired) {
+        log(`VIOLATION FIRED | Missing: ${data.missing_ppe.join(", ")} | ${data.timestamp}`);
+      }
+    };
+
+    ws.onclose = () => {
+      statusDiv.textContent = "✗ Disconnected";
+      log("WebSocket disconnected.");
+    };
+
+    ws.onerror = (e) => {
+      statusDiv.textContent = "✗ Connection error";
+      log("Error: " + e);
+    };
+
+    function log(msg) {
+      const line       = document.createElement("div");
+      line.textContent = new Date().toLocaleTimeString() + "  " + msg;
+      logEl.prepend(line);
+    }
+  </script>
+</body>
+</html>
